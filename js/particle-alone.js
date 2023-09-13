@@ -1,178 +1,227 @@
-$(function(){
-	/**
- * @author Nicolas Barradeau 
- * http://en.nicoptere.net
- */
-(function() 
-{
-	var c;
-	var ctx;
-	var width;
-	var height;
-	
-	var axes = [];
-	var wanderers = [];
-	var colors = [	
-					"#FFCC00", 
-					"#66CCF0", 
-					"#FF0033", 
-					"#99CC33"
-				];
-	
-	window.onload = function()
-	{
-		
-		c = document.getElementById( "canvas" );
-    c.width = window.innerWidth
-    c.width = window.innerHeight
-		ctx = c.getContext( "2d" );
-		window.onresize = onResize;
-		window.onmousedown = onMouseDown;
-		onResize();
-		update()
-		
-	}
-	
-	function onResize( e )
-	{
-		
-		reset();
-		
-	}
-	
-	function getWidth( element ){return Math.max(element.scrollWidth,element.offsetWidth,element.clientWidth );}
-	function getHeight( element ){return Math.max(element.scrollHeight,element.offsetHeight,element.clientHeight );}
-	
-	function reset()
-	{
-		axes = [];
-		
-		width = c.width = window.innerWidth
-    height = c.height = window.innerHeight
-		
-		var random = 500;
-		
-		var cols = 30;
-		for( var i = 0; i < cols; i++ )
-		{
-			var a = new point( width / cols * i + random * Math.random(), 0 );
-			var b = new point( width / cols * i + random * Math.random(), height );
-			axes.push( new Axe( a,b ) );
-		}
-		
-		var rows = 20;
-		for( var i = 0; i < rows; i++ )
-		{
-			var a = new point( 0, 		height / rows * i + random * Math.random());
-			var b = new point( width, 	height / rows * i + random * Math.random());
-			axes.push( new Axe( a,b ) );
-		}
-    wanderers = [];
-		for( var i = 0; i < colors.length * 3; i++ )
-		{
-			wanderers.push( new wanderer( Math.random() * width, Math.random() * height, 
-                                   0,
-                                   Math.random() + .5, colors[ i % colors.length ]) );
-		}
-		
-	}
-	
-	function onMouseDown()
-	{
-		reset();
-	}
-	
-	function update()
-	{
-		requestAnimationFrame( update )
-		ctx.fillStyle = "rgba(255,255,255,.25)";
-    ctx.globalCompositeOperation = "lighten";
-		ctx.fillRect( 0,0,width, height );
-    ctx.globalCompositeOperation = "source-over";
-		
-		ctx.strokeStyle = "rgba(16,16,16,.01 )";
-		for( var j = 0; j < axes.length; j++ )axes[ j ].draw( ctx );
-			
-		for( var i = 0; i < wanderers.length; i++ )
-		{
-      
-			var hull = [];
-			var pp_hull = [];
-			var p = wanderers[ i ];
-			p.update( width, height );
-			
-			ctx.beginPath();
-      
-			  ctx.fillStyle = p.color;
-			  ctx.arc( p.x, p.y, 8, 0, Math.PI * 2, true );
-			  ctx.fill();
-      
-			ctx.closePath();
-			
-			for( var j = 0; j < axes.length; j++ )
-			{
-				
-				var axe = axes[ j ];
-        
-				var r = axe.reflect( p );
-				
-				ctx.beginPath();
-					
-					ctx.fillStyle = p.color;
-					ctx.arc( r.x, r.y, 2, 0, Math.PI * 2, true );
-					ctx.fill();
-					
-				ctx.closePath();
-				
-			}
-		}
-	}
-	
-	var Axe = function( a,b ){ this.a = a; this.b=b; }
-	Axe.prototype = 	
-	{
-		draw : function( ctx ){ctx.beginPath();ctx.moveTo( this.a.x, this.a.y );ctx.lineTo( this.b.x, this.b.y );ctx.stroke();ctx.closePath();}
-		,reflect : function( p ){return utils.reflect( p, this.a, this.b );}
-	}
-	
-	var wanderer = function( x,y,a,s,color ){this.x = x||0;this.y = y||0;this.a = a||0;this.s = s||1;this.color = color||"#000";}
-	wanderer.prototype = 
-	{
-		update : function( width, height )
-		{
-			with( this )
-			{
-				a += ( Math.random() - .5 ) * 10 / 180 * Math.PI;
-				
-				x += Math.cos( a ) * s;
-				y += Math.sin( a ) * s;
-				
-				if( x < 0
-				||	y < 0
-				||	x > width 
-				||	y > height ) a += Math.PI / 180;
-			}
-		}
-	}
-	
-	var point = function( x,y ){this.x = x||0;this.y = y||0;}
-	var utils = function(){};
-	utils.reflect = function(p,a,b)
-	{
-		var pp = utils.project( p, a, b, false );
-		return new point( p.x + ( pp.x - p.x ) * 2,p.y + ( pp.y - p.y ) * 2  );
-	}
-	utils.project = function( p, a, b, asSegment )
-	{
-		var dx = b.x - a.x;
-		var dy = b.y - a.y;
-		if ( asSegment && dx == 0 && dy == 0 ){return a;}
-		var t = ( ( p.x - a.x ) * dx + ( p.y - a.y ) * dy) / ( dx * dx + dy * dy );
-		if ( asSegment && t < 0) return a;
-		if ( asSegment && t > 1) return b;
-		return new point( a.x + t * dx, a.y + t * dy );
-	}
-	
-})();
+/*          *     .        *  .    *    *   . 
+ .  *  move your mouse to over the stars   .
+ *  .  .   change these values:   .  *
+   .      * .        .          * .       */
+const STAR_COLOR = '#000';
+const STAR_SIZE = 3;
+const STAR_MIN_SCALE = 0.2;
+const OVERFLOW_THRESHOLD = 50;
+const STAR_COUNT = ( window.innerWidth + window.innerHeight ) / 8;
 
-})
+const canvas = document.querySelector( 'canvas' ),
+      context = canvas.getContext( '2d' );
+
+let scale = 1, // device pixel ratio
+    width,
+    height;
+
+let stars = [];
+
+let pointerX,
+    pointerY;
+
+let velocity = { x: 0, y: 0, tx: 0, ty: 0, z: 0.0005 };
+
+let touchInput = false;
+
+generate();
+resize();
+step();
+
+window.onresize = resize;
+canvas.onmousemove = onMouseMove;
+canvas.ontouchmove = onTouchMove;
+canvas.ontouchend = onMouseLeave;
+document.onmouseleave = onMouseLeave;
+
+
+function generate() {
+
+   for( let i = 0; i < STAR_COUNT; i++ ) {
+    stars.push({
+      x: 0,
+      y: 0,
+      z: STAR_MIN_SCALE + Math.random() * ( 1 - STAR_MIN_SCALE )
+    });
+   }
+
+}
+
+function placeStar( star ) {
+
+  star.x = Math.random() * width;
+  star.y = Math.random() * height;
+
+}
+
+function recycleStar( star ) {
+
+  let direction = 'z';
+
+  let vx = Math.abs( velocity.x ),
+	    vy = Math.abs( velocity.y );
+
+  if( vx > 1 || vy > 1 ) {
+    let axis;
+
+    if( vx > vy ) {
+      axis = Math.random() < vx / ( vx + vy ) ? 'h' : 'v';
+    }
+    else {
+      axis = Math.random() < vy / ( vx + vy ) ? 'v' : 'h';
+    }
+
+    if( axis === 'h' ) {
+      direction = velocity.x > 0 ? 'l' : 'r';
+    }
+    else {
+      direction = velocity.y > 0 ? 't' : 'b';
+    }
+  }
+  
+  star.z = STAR_MIN_SCALE + Math.random() * ( 1 - STAR_MIN_SCALE );
+
+  if( direction === 'z' ) {
+    star.z = 0.1;
+    star.x = Math.random() * width;
+    star.y = Math.random() * height;
+  }
+  else if( direction === 'l' ) {
+    star.x = -OVERFLOW_THRESHOLD;
+    star.y = height * Math.random();
+  }
+  else if( direction === 'r' ) {
+    star.x = width + OVERFLOW_THRESHOLD;
+    star.y = height * Math.random();
+  }
+  else if( direction === 't' ) {
+    star.x = width * Math.random();
+    star.y = -OVERFLOW_THRESHOLD;
+  }
+  else if( direction === 'b' ) {
+    star.x = width * Math.random();
+    star.y = height + OVERFLOW_THRESHOLD;
+  }
+
+}
+
+function resize() {
+
+  scale = window.devicePixelRatio || 1;
+
+  width = window.innerWidth * scale;
+  height = window.innerHeight * scale;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  stars.forEach( placeStar );
+
+}
+
+function step() {
+
+  context.clearRect( 0, 0, width, height );
+
+  update();
+  render();
+
+  requestAnimationFrame( step );
+
+}
+
+function update() {
+
+  velocity.tx *= 0.96;
+  velocity.ty *= 0.96;
+
+  velocity.x += ( velocity.tx - velocity.x ) * 0.8;
+  velocity.y += ( velocity.ty - velocity.y ) * 0.8;
+
+  stars.forEach( ( star ) => {
+
+    star.x += velocity.x * star.z;
+    star.y += velocity.y * star.z;
+
+    star.x += ( star.x - width/2 ) * velocity.z * star.z;
+    star.y += ( star.y - height/2 ) * velocity.z * star.z;
+    star.z += velocity.z;
+  
+    // recycle when out of bounds
+    if( star.x < -OVERFLOW_THRESHOLD || star.x > width + OVERFLOW_THRESHOLD || star.y < -OVERFLOW_THRESHOLD || star.y > height + OVERFLOW_THRESHOLD ) {
+      recycleStar( star );
+    }
+
+  } );
+
+}
+
+function render() {
+
+  stars.forEach( ( star ) => {
+
+    context.beginPath();
+    context.lineCap = 'round';
+    context.lineWidth = STAR_SIZE * star.z * scale;
+    context.globalAlpha = 0.5 + 0.5*Math.random();
+    context.strokeStyle = STAR_COLOR;
+
+    context.beginPath();
+    context.moveTo( star.x, star.y );
+
+    var tailX = velocity.x * 2,
+        tailY = velocity.y * 2;
+
+    // stroke() wont work on an invisible line
+    if( Math.abs( tailX ) < 0.1 ) tailX = 0.5;
+    if( Math.abs( tailY ) < 0.1 ) tailY = 0.5;
+
+    context.lineTo( star.x + tailX, star.y + tailY );
+
+    context.stroke();
+
+  } );
+
+}
+
+function movePointer( x, y ) {
+
+  if( typeof pointerX === 'number' && typeof pointerY === 'number' ) {
+
+    let ox = x - pointerX,
+        oy = y - pointerY;
+
+    velocity.tx = velocity.tx + ( ox / 8*scale ) * ( touchInput ? 1 : -1 );
+    velocity.ty = velocity.ty + ( oy / 8*scale ) * ( touchInput ? 1 : -1 );
+
+  }
+
+  pointerX = x;
+  pointerY = y;
+
+}
+
+function onMouseMove( event ) {
+
+  touchInput = false;
+
+  movePointer( event.clientX, event.clientY );
+
+}
+
+function onTouchMove( event ) {
+
+  touchInput = true;
+
+  movePointer( event.touches[0].clientX, event.touches[0].clientY, true );
+
+  event.preventDefault();
+
+}
+
+function onMouseLeave() {
+
+  pointerX = null;
+  pointerY = null;
+
+}
